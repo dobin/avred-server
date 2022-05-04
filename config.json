@@ -1,6 +1,6 @@
 {
 	"bind_ip": "0.0.0.0",
-	"av_timeout": "30",
+	"av_timeout": 5,
 	"virus_dir": "c:\\temp\\",
 	"port": 9001,
 	"cmd": [ "C:\\Program Files (x86)\\Sophos\\Sophos Anti-Virus\\sav32cli.exe", "-ss", "VIRUS_FILE" ]

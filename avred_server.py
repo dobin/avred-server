@@ -1,13 +1,13 @@
 #import argparse
-from ctypes.windll.shell32 import IsUserAnAdmin
 from flask import Flask, request
 from json import load
 from os.path import isfile, join
 from os import remove
 from random import choice
 from time import sleep
-from strings import ascii_letters
+from string import ascii_letters
 from subprocess import PIPE, DEVNULL, run
+from sys import platform
 
 
 app = Flask(__name__)
@@ -34,9 +34,10 @@ def scan():
 		return scan_cmd(contents)
 
 
+# TODO, start timer, abort and alert after given time (AV might block write)
 def save_file(data):
 	log("Writing data to file...")
-	with open(app.config["virus-file"], "wb") as f:
+	with open(app.config["virus_file"], "wb") as f:
 		f.write(data)
 
 
@@ -81,6 +82,7 @@ def scan_timeout(contents):
 	Stores file, waits some time, and then checks if file was removed by AV.
 	"""
 	save_file(contents)
+	print("Starting timeout...")
 	sleep(app.config["av_timeout"])
 
 	if not isfile(app.config["virus_file"]):
@@ -97,8 +99,9 @@ def build_cmd():
 	Replaces file placeholder in cmd list and returns runnable command.
 	"""
 	return list(map(
-		lambda x: app.config["virus_file"] if x == cmd_file_placeholder else x
-	), app.config["cmd"])
+		lambda x: app.config["virus_file"] if x == cmd_file_placeholder else x,
+		app.config["cmd"]
+	))
 
 
 def load_config():
@@ -126,10 +129,16 @@ def change_virus_file_path():
 
 
 def check_admin():
-	try:
-		is_admin = os.getuid() == 0
-	except AttributeError:
-		is_admin = IsUserAnAdmin()
+	is_admin = False
+
+	if platform == "linux":
+		from os import getuid
+		is_admin = getuid() == 0
+
+	elif platform == "win32":
+		from ctypes import windll
+		is_admin = windll.shell32.IsUserAnAdmin()
+	
 	return is_admin
 
 
@@ -140,10 +149,10 @@ def log(s):
 
 def run_server():
 	if not check_admin():
-		log("Not an Admin, cannot run AV")
+		log("Not an Admin, cannot actively scan with AV")
 		app.config["is_admin"] = False
 	load_config()
-	log("Config loaded:\n" + "\n".join(app.config.items())
+	log("Config loaded:\n" + str(app.config))
 
 	app.run(app.config["bind_ip"], app.config["port"])
 
