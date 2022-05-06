@@ -1,137 +1,228 @@
 #import argparse
-from flask import Flask, request
+from flask import Flask, request, jsonify
 from json import load
 from os.path import isfile, join
 from os import remove
 from random import choice
-from time import sleep
+from time import sleep, time
 from string import ascii_letters
-from subprocess import PIPE, DEVNULL, run
+from subprocess import PIPE, DEVNULL, run, TimeoutExpired
 from sys import platform
 
 
 app = Flask(__name__)
-detected = "Yay"
-undetected = "Nay"
 cmd_file_placeholder = "VIRUS_FILE"
+virus_file_initial_name = "test.exe"
+conf = {}
 
 
 @app.route("/")
 def index():
-	return f"AV Server {app.config['engine']} is up.\n"
+	return jsonify({
+		"msg": f"AV Server {conf['engine']} is up.",
+		"api": {
+			"GET /": "this screen",
+			"GET /test": "test if config works",
+			"POST /scan": "scan a file, body=virus_bytes"
+		}
+	})
 
 
 @app.route("/scan", methods=["POST"])
-def scan():
+def scan_route():
 	contents = request.get_data()
+	try:
+		return jsonify({
+			"detected": scan(contents, conf)
+		})
+	except BaseException as e: # handle exceptions at client side too!
+		return jsonify({
+			"exception": str(e)
+		}), 500
 
-	# do timeout test if non-cli AV or run as non admin
-	if app.config["cmd"] in ["", []] or not app.config["is_admin"]:
+
+@app.route("/test")
+def test_server(conf=conf):
+	"""
+	Tests if config is working correctly, returns 500 otherwise
+	"""
+	virus = b"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
+	
+	try:
+		log("Test malicous...")
+		mal_det = scan(virus, conf)
+		log("Test benign...")
+		benign_det = scan(b"Not malicous", conf)
+
+	except BaseException as e:
+		log("Tests failed, please check config and log above.")
+		return jsonify({
+			"exception": str(e)
+		}), 500
+
+	if not mal_det or benign_det:
+		log("Tests failed, malicous should be detected, and benign not detected.")
+		log("Please check your config and the log above.")
+		return jsonify({
+			"malicous detected": mal_det, 
+			"benign detected": benign_det,
+			"msg": "bugs, check your server log"
+		}), 500
+
+	return jsonify({
+		"malicous detected": mal_det, 
+		"benign detected": benign_det,
+		"msg": "working as intended"
+	})
+
+
+def scan(contents, conf):
+	# do timeout test if non-cli AV
+	if conf["cmd"] in ["", []]:
 		log("ScanType: Timeout")
-		return scan_timeout(contents)
+		return scan_timeout(contents, conf)
 	else:
 		log("ScanType: CMD")
-		return scan_cmd(contents)
+		return scan_cmd(contents, conf)
 
 
-# TODO, start timer, abort and alert after given time (AV might block write)
-def save_file(data):
-	log("Writing data to file...")
-	with open(app.config["virus_file"], "wb") as f:
-		f.write(data)
+def save_file(data, conf):
+	try:
+		log("Writing data to file...")
+		with open(conf["virus_file"], "wb") as f:
+			f.write(data)
+		return True
+	except BaseException as e:
+		log(f"Could not save virus file! Exception: {str(e)}")
+		return False
 
 
-def delete_file():
+def delete_file(conf):
 	"""
 	Delete virus file, or change to new file name if unable to delete.
 	"""
 	try:
-		remove(app.config["virus_file"])
+		remove(conf["virus_file"])
 	except BaseException:
-		change_virus_file_path()
+		change_virus_file_name(conf)
+		log("Could not delete virus file, it's probably held by some process.")
+		log(f"New virus file name: {conf['virus_file']}")
 
 
-def scan_cmd(contents):
+def scan_cmd(contents, conf):
 	"""
-	Stores file and actively scans it with AV.
+	Stores a file and actively scans it with AV.
 	"""
-	save_file(contents)
+	if not save_file(contents, conf):
+		err = "Virus file could not be safed!"
+		log(err)
+		raise Exception(err)
 
-	# call sophos. Required admin!
-	# sample output:
-	# >>> Virus 'EICAR-AV-Test' found in file c:\Temp\eicar.com
+	# call AV, admin rights required with Sophos
 	log("Scanning file...")
-	stdout = run(
-		app.config["parsed_cmd"],
-		check=False,
-		stdin=DEVNULL, # do not wait for user input
-		stdout=PIPE).stdout
+	try:
+		stdout = run(
+			conf["parsed_cmd"],
+			check=False,
+			stdin=DEVNULL, # do not wait for user input
+			stdout=PIPE,
+			timeout=conf["av_timeout"]
+		).stdout
+	except TimeoutExpired:
+		err = "Did not finish scan within timeout window!"
+		log(err)
+		raise Exception(err)
+
 	log("Scan Result: " + str(stdout))
 
-	delete_file()
-	if b'found in file' in stdout:
-		log("Detected with Scan")
-		return detected
+	# AV detected and removed the file, add AV exception for path
+	if not isfile(conf["virus_file"]):
+		err = f"File was removed before or at scan time! Add {conf['virus_dir']} to AV whitelist."
+		log(err)
+		raise Exception(err)
+
+	delete_file(conf)
+	if conf["virus_detected"].encode() in stdout:
+		log("Virus detected with Scan")
+		return True
 	else:
-		log("Not detected with Scan")
-		return undetected
+		log("No Virus detected with Scan")
+		return False
 
 
-def scan_timeout(contents):
+def scan_timeout(contents, conf):
 	"""
-	Stores file, waits some time, and then checks if file was removed by AV.
+	Stores a file, waits some time, and then checks if file was removed by AV.
 	"""
-	save_file(contents)
-	print("Starting timeout...")
-	sleep(app.config["av_timeout"])
+	save_file(contents, conf)
+	log("Starting timeout...")
+	sleep(conf["av_timeout"])
 
-	if not isfile(app.config["virus_file"]):
-		log("Detected with Timeout")
-		return detected
+	if not isfile(conf["virus_file"]):
+		log("Virus detected with Timeout")
+		return True
 	else:
-		delete_file()
-		log("Not detected with Timeout")
-		return undetected
+		delete_file(conf)
+		log("No Virus detected with Timeout")
+		return False
 
 
-def build_cmd():
-	"""
-	Replaces file placeholder in cmd list and returns runnable command.
-	"""
-	return list(map(
-		lambda x: app.config["virus_file"] if x == cmd_file_placeholder else x,
-		app.config["cmd"]
+def update_virus_file_path(conf, new_name):
+	# adapt virus file name
+	conf["virus_file"] = join(conf["virus_dir"], new_name)
+
+	# replaces file placeholder in cmd list and returns runnable command
+	conf["parsed_cmd"] = list(map(
+		lambda x: conf["virus_file"] if x == cmd_file_placeholder else x,
+		conf["cmd"]
 	))
 
 
-def load_config():
+def check_is_path_writable(virus_path):
+	dummy_path = join(virus_path, "test_path_writable.txt")
+	try:
+		with open(dummy_path, "w"):
+			pass
+		with open(dummy_path, "r"):
+			pass
+		remove(dummy_path)
+		return True
+	except IOError as e:
+		log(f"Path {virus_path} must be writable and readable! Exception: {str(e)}")
+		log("May need to clean up test file manually.")
+		return False
+	except BaseException:
+		log(f"Unknown exception when testing {virus_path}! Exception: {str(e)}")
+		log("May need to clean up test file manually.")
+		return False
+
+
+def load_config(conf):
 	with open("config.json") as f:
 		data = load(f)
-	
-	# load config for given AV engine
-	#for k, v in data["engines"][av_type].items():
-	#	app.config[k] = v
 
 	# load general config
 	for k, v in data.items():
-		#if k == "engines": continue
-		app.config[k] = v
+		conf[k] = v
 
-	app.config["virus_file"] = join(app.config["virus_dir"], "test.exe")
-	app.config["parsed_cmd"] = build_cmd()
+	# load & adapt paths
+	update_virus_file_path(conf, virus_file_initial_name)
+
+	if not check_is_path_writable(conf["virus_dir"]):
+		raise Exception("Virus Dir is non writable, use different path or make it writable")
 
 
-def change_virus_file_path():
+def change_virus_file_name(conf):
+	name, ext = virus_file_initial_name.rsplit(".", 1)
 	rand = "".join([choice(ascii_letters) for _ in range(5)])
-	name = "test-" + rand + ".exe"
-	app.config["virus_file"] = name
-	app.config["parsed_cmd"] = build_cmd()
+	new_name = f"{name}-{rand}.{ext}"
+	update_virus_file_path(conf, new_name)
 
 
 def check_admin():
 	is_admin = False
 
-	if platform == "linux":
+	if platform in ["linux", "darwin"]:
 		from os import getuid
 		is_admin = getuid() == 0
 
@@ -147,19 +238,17 @@ def log(s):
 	print(s)
 
 
-def run_server():
-	if not check_admin():
-		log("Not an Admin, cannot actively scan with AV")
-		app.config["is_admin"] = False
-	load_config()
-	log("Config loaded:\n" + str(app.config))
+def run_server(conf):
+	if check_admin():
+		log("AV server started as Admin")
+	else:
+		log("AV server started as User")
+	
+	load_config(conf)
+	log("Config loaded:\n" + str(conf))
 
-	app.run(app.config["bind_ip"], app.config["port"])
+	app.run(conf["bind_ip"], conf["port"])
 
 
 if __name__ == "__main__":
-	#parser = argparse.ArgumentParser()
-	#parser.add_argument("-a", "--av-type", choices=["Sophos", "Defender"], help="Choose an AV Engine to run the file agains.", default="Sophos")
-	#args = parser.parse_args()
-
-	run_server()
+	run_server(conf)
