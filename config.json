@@ -1,9 +1,9 @@
 {
 	"bind_ip": "0.0.0.0",
-	"port": 9001,
+	"port": 8001,
 	"av_timeout": 30,
 	"virus_dir": "C:\\Temp\\",
-	"cmd": [ "C:\\Program Files (x86)\\Sophos\\Sophos Anti-Virus\\sav32cli.exe", "-ss", "VIRUS_FILE" ],
-	"virus_detected": "found in file",
-	"engine": "Sophos"
+	"cmd": [ "amsiscan\\amsiscan.exe", "VIRUS_FILE" ],
+	"virus_detected": "Result: Detected",
+	"engine": "AMSI / Defender"
 }
