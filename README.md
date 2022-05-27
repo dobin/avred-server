@@ -9,14 +9,10 @@ To be used with the AV Reduction (avred) project. Exposes a port, which accepts 
 1. install python3,  pip3 and flask 
 	- Linux: ```sudo apt install python3 python3-pip && pip3 install flask```
 	- Windows: download python from https://www.python.org/downloads/, include pip in installation, then open powershell: ```pip install flask```
-2. maybe adapt config (see below)
-3. start avred_server.py
-4. config avred to point to IP and Port where the server runs and then run avred
-5. ???
-6. profit
+2. check config.json
+3. put the "virus_dir" (default `c:\temp\`) on the AV exclusion list
+4. Browser to `localhost:8001/test` to check if it works
 
-### Configuration
-Adapt the value of cmd in the [config](config.json) for your specific setup. See active / passive scanning for more info. After configuration, start the server and do a GET /test to check if the config works.
 
 #### Active Scanning, i.e. CLI Scanning
 The cmd should point to your AV executable, the virus file name and handling should work automagically. The virus_dir should be whitelisted in your AV (except when for timebase / passive scanning).

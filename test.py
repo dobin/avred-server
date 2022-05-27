@@ -76,4 +76,4 @@ def test_all():
 
 
 if __name__ == "__main__":
-	test_all()
+	test_scan_cmd()
