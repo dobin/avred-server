@@ -4,6 +4,7 @@ import logging
 import logging
 from flask import Flask, request, jsonify
 from json import load
+import brotli
 
 from amsiscan import AMSIScanner
 
@@ -28,6 +29,14 @@ def index():
 @app.route("/scan", methods=["POST"])
 def scan_route():
 	contents = request.get_data()
+	
+	if request.args.get('brotli', "False") == "True":
+		print("AAAA")
+		contents = brotli.decompress(contents)
+
+	if 'filename' in request.args:
+		filename = request.args['filename']
+
 	try:
 		return jsonify({
 			"detected": scan(contents)
