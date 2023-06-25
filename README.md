@@ -17,3 +17,8 @@ Returns ```{"detected": true}``` if file was detected by AV, or ```{"detected": 
 2. `pip -r requirements.txt`
 3. Disable sample submission on your AV
 4. Browser to `localhost:8001/test` to check if it works
+
+Note: If you get a `ImportError: DLL load failed while importing _brotli", see 
+https://github.com/google/brotli/issues/782, solution is: 
+
+install "vc_redist.x64.exe" from this link https://support.microsoft.com/en-gb/help/2977003/the-latest-supported-visual-c-downloads

@@ -31,7 +31,6 @@ def scan_route():
 	contents = request.get_data()
 	
 	if request.args.get('brotli', "False") == "True":
-		print("AAAA")
 		contents = brotli.decompress(contents)
 
 	if 'filename' in request.args:
