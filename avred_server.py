@@ -105,8 +105,7 @@ def scan(contents):
 		elif 'AMSI_RESULT_CLEAN' in r or 'AMSI_RESULT_NOT_DETECTED' in r:
 			return False
 		else:
-			logging.info("Unknown result: {}".format(res))
-			return False
+			raise Exception("Scanner error: {}".format(r))
 
 
 if __name__ == "__main__":
